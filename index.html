@@ -1,0 +1,1661 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>인사팀 장애인 고용의무 관리 (공용 워크스페이스)</title>
+    
+    <!-- Fonts: Noto Sans KR -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons: FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans KR"', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6', // Teal
+                            600: '#0d9488',
+                            900: '#134e4a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- React & ReactDOM (UMD) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel Standalone (Strict Version 7.23.5) -->
+    <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+
+    <style>
+        /* 기본 스크롤바 스타일링 */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        .spinner { border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
+    <div id="root"></div>
+
+    <!-- Firebase SDK Setup (Modular, CDN) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, addDoc, setDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, where, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // 사용자가 제공한 Firebase 설정값 적용
+        const firebaseConfig = {
+            apiKey: "AIzaSyD2oC31wI6LmOwyLoePDs6jT_jRxx_7oNw",
+            authDomain: "esg-dashboard-f22c5.firebaseapp.com",
+            projectId: "esg-dashboard-f22c5",
+            storageBucket: "esg-dashboard-f22c5.firebasestorage.app",
+            messagingSenderId: "573849232582",
+            appId: "1:573849232582:web:104092390676f413af23c7",
+            measurementId: "G-9JK2DK0TFV"
+        };
+
+        try {
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+
+            // React 컴포넌트에서 접근할 수 있도록 전역 객체에 바인딩
+            window.FB = {
+                auth, db, signInAnonymously, onAuthStateChanged,
+                collection, onSnapshot, addDoc, setDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, where, writeBatch, getDocs
+            };
+
+            // Firebase 준비 완료 이벤트 발송
+            window.dispatchEvent(new Event('firebase-ready'));
+        } catch (error) {
+            console.error("Firebase 초기화 에러:", error);
+            window.firebaseInitError = error;
+            window.dispatchEvent(new Event('firebase-ready'));
+        }
+    </script>
+
+    <!-- React Application Logic -->
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+        // ---------------------------------------------------------
+        // 1. ErrorBoundary (필수 안전장치)
+        // ---------------------------------------------------------
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+            componentDidCatch(error, errorInfo) {
+                console.error("ErrorBoundary caught an error:", error, errorInfo);
+            }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+                            <div className="bg-white p-8 rounded-xl shadow-lg max-w-lg w-full text-center border-t-4 border-red-500">
+                                <i className="fa-solid fa-triangle-exclamation text-5xl text-red-500 mb-4"></i>
+                                <h2 className="text-2xl font-bold text-gray-800 mb-2">시스템 오류 발생</h2>
+                                <p className="text-gray-600 mb-6 bg-gray-50 p-3 rounded text-sm text-left overflow-auto max-h-32">
+                                    {this.state.error?.message || "알 수 없는 오류가 발생했습니다."}
+                                </p>
+                                <button 
+                                    onClick={() => window.location.reload()}
+                                    className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-2 rounded-lg transition-colors font-medium shadow-sm"
+                                >
+                                    <i className="fa-solid fa-rotate-right mr-2"></i>새로고침
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        // ---------------------------------------------------------
+        // 2. Constants & Utilities
+        // ---------------------------------------------------------
+        const COLLECTION_NAME = "global_shared_data";
+        const RULE_DOC_ID = "ruleset-default";
+        
+        // 민감정보 최소화: 장애 분류 키
+        const DISABILITY_TYPES = {
+            NONE: { label: "비대상", weightKey: 0 },
+            LIGHT: { label: "경증", weightKey: 1 },
+            SEVERE: { label: "중증", weightKey: 2 }
+        };
+
+        const DEFAULT_RULES = {
+            entityType: 'ruleSet',
+            id: 'default_rule',
+            obligationRate: 3.1, // 기본 의무고용률 (%)
+            weightLight: 1,      // 경증 가중치
+            weightSevere: 2,     // 중증 가중치
+            roundMode: 'floor',  // floor(내림), round(반올림), ceil(올림)
+            updatedAt: null
+        };
+
+        const formatNumber = (num) => new Intl.NumberFormat('ko-KR').format(num);
+        const escapeCsvCell = (value) => {
+            const text = String(value ?? "");
+            if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+            return text;
+        };
+        const normalizeDisabilityType = (value) => {
+            const v = String(value || "").trim().toUpperCase();
+            if (["SEVERE", "중증", "PRIORITY"].includes(v)) return "SEVERE";
+            if (["LIGHT", "경증", "BASIC"].includes(v)) return "LIGHT";
+            return "NONE";
+        };
+
+        const calculateQuota = (totalEmp, rate, mode) => {
+            const raw = totalEmp * (rate / 100);
+            if (mode === 'ceil') return Math.ceil(raw);
+            if (mode === 'round') return Math.round(raw);
+            return Math.floor(raw); // default: floor
+        };
+
+        // ---------------------------------------------------------
+        // 3. UI Components
+        // ---------------------------------------------------------
+        const Toast = ({ message, type, onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 3000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+
+            const colors = {
+                success: "bg-green-600",
+                error: "bg-red-600",
+                info: "bg-blue-600"
+            };
+            const icons = {
+                success: "fa-check-circle",
+                error: "fa-circle-exclamation",
+                info: "fa-info-circle"
+            };
+
+            return (
+                <div className={`fixed bottom-4 right-4 ${colors[type] || colors.info} text-white px-4 py-3 rounded-lg shadow-lg flex items-center space-x-3 z-50 animate-bounce-short`}>
+                    <i className={`fa-solid ${icons[type] || icons.info}`}></i>
+                    <span>{message}</span>
+                    <button onClick={onClose} className="ml-2 opacity-70 hover:opacity-100"><i className="fa-solid fa-xmark"></i></button>
+                </div>
+            );
+        };
+
+        const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl max-w-sm w-full overflow-hidden transform transition-all">
+                        <div className="p-5">
+                            <h3 className="text-lg font-bold text-gray-900 mb-2">{title}</h3>
+                            <p className="text-gray-600 text-sm">{message}</p>
+                        </div>
+                        <div className="bg-gray-50 px-5 py-3 flex justify-end space-x-2">
+                            <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                                취소
+                            </button>
+                            <button onClick={onConfirm} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700">
+                                확인
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ---------------------------------------------------------
+        // 4. Views (Pages)
+        // ---------------------------------------------------------
+
+        // --- View: Dashboard ---
+        const Dashboard = ({ employees, rules, hiringPlans }) => {
+            // 현재 현황 계산
+            const totalEmp = employees.length;
+            const requiredQuota = calculateQuota(totalEmp, rules.obligationRate, rules.roundMode);
+            
+            let currentWeightCount = 0;
+            let currentDisabledPersons = 0;
+
+            employees.forEach(emp => {
+                if (emp.disabilityType !== 'NONE') {
+                    currentDisabledPersons++;
+                    currentWeightCount += emp.disabilityType === 'SEVERE' ? rules.weightSevere : rules.weightLight;
+                }
+            });
+
+            const gap = currentWeightCount - requiredQuota;
+            const isFulfilled = gap >= 0;
+            const achievement = ((currentWeightCount / (requiredQuota || 1)) * 100);
+
+            // 시뮬레이션 (채용 계획 반영)
+            const futureTotalEmp = totalEmp + hiringPlans.reduce((sum, p) => sum + Number(p.totalCount || 0), 0);
+            const futureRequired = calculateQuota(futureTotalEmp, rules.obligationRate, rules.roundMode);
+            
+            let futureWeightCount = currentWeightCount;
+            hiringPlans.forEach(p => {
+                if (p.disabilityType !== 'NONE') {
+                    const w = p.disabilityType === 'SEVERE' ? rules.weightSevere : rules.weightLight;
+                    futureWeightCount += (Number(p.disabledCount || 0) * w);
+                }
+            });
+            const futureGap = futureWeightCount - futureRequired;
+
+            const composition = {
+                none: employees.filter((e) => e.disabilityType === "NONE").length,
+                light: employees.filter((e) => e.disabilityType === "LIGHT").length,
+                severe: employees.filter((e) => e.disabilityType === "SEVERE").length,
+            };
+            const compositionTotal = composition.none + composition.light + composition.severe || 1;
+
+            const deptRows = Object.entries(
+                employees.reduce((acc, emp) => {
+                    const dept = emp.dept || "미지정";
+                    const weight =
+                        emp.disabilityType === "SEVERE" ? Number(rules.weightSevere || 2)
+                        : emp.disabilityType === "LIGHT" ? Number(rules.weightLight || 1)
+                        : 0;
+                    if (!acc[dept]) acc[dept] = { headcount: 0, weighted: 0 };
+                    acc[dept].headcount += 1;
+                    acc[dept].weighted += weight;
+                    return acc;
+                }, {})
+            )
+                .map(([dept, v]) => ({ dept, ...v }))
+                .sort((a, b) => b.weighted - a.weighted)
+                .slice(0, 6);
+            const maxDeptWeight = Math.max(...deptRows.map((r) => r.weighted), 1);
+
+            return (
+                <div className="space-y-6 animate-fade-in">
+                    <div className="flex justify-between items-end">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-800">통합 대시보드</h1>
+                            <p className="text-sm text-gray-500 mt-1">실시간 공용 데이터 기반 산정 현황</p>
+                        </div>
+                        <div className="text-right text-xs text-gray-400 bg-white p-2 rounded border border-gray-200 shadow-sm">
+                            <span className="block font-semibold text-gray-600 mb-1"><i className="fa-solid fa-scale-balanced mr-1"></i>적용 룰셋</span>
+                            의무율: <span className="text-brand-600 font-bold">{rules.obligationRate}%</span> | 
+                            중증가중: <span className="text-brand-600 font-bold">x{rules.weightSevere}</span> |
+                            산정: <span className="text-brand-600 font-bold">{rules.roundMode === 'floor' ? '내림' : rules.roundMode === 'ceil' ? '올림' : '반올림'}</span>
+                        </div>
+                    </div>
+
+                    {/* KPI Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-blue-500">
+                            <h3 className="text-sm font-medium text-gray-500">총 상시근로자</h3>
+                            <div className="mt-2 flex items-baseline gap-2">
+                                <span className="text-3xl font-bold text-gray-900">{formatNumber(totalEmp)}</span>
+                                <span className="text-sm text-gray-500">명</span>
+                            </div>
+                        </div>
+                        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-purple-500">
+                            <h3 className="text-sm font-medium text-gray-500">의무 고용 인원</h3>
+                            <div className="mt-2 flex items-baseline gap-2">
+                                <span className="text-3xl font-bold text-gray-900">{formatNumber(requiredQuota)}</span>
+                                <span className="text-sm text-gray-500">명</span>
+                            </div>
+                            <p className="text-xs text-gray-400 mt-1">({totalEmp} × {rules.obligationRate}%)</p>
+                        </div>
+                        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-teal-500">
+                            <h3 className="text-sm font-medium text-gray-500">현재 인정 인원 (가중치)</h3>
+                            <div className="mt-2 flex items-baseline gap-2">
+                                <span className="text-3xl font-bold text-gray-900">{formatNumber(currentWeightCount)}</span>
+                                <span className="text-sm text-gray-500">명</span>
+                            </div>
+                            <p className="text-xs text-gray-400 mt-1">(실인원: {currentDisabledPersons}명)</p>
+                        </div>
+                        <div className={`bg-white p-5 rounded-xl shadow-sm border border-gray-100 border-l-4 ${isFulfilled ? 'border-l-green-500' : 'border-l-red-500'}`}>
+                            <h3 className="text-sm font-medium text-gray-500">충족 여부 (Gap)</h3>
+                            <div className="mt-2 flex items-baseline gap-2">
+                                <span className={`text-3xl font-bold ${isFulfilled ? 'text-green-600' : 'text-red-600'}`}>
+                                    {gap > 0 ? '+' : ''}{formatNumber(gap)}
+                                </span>
+                                <span className="text-sm text-gray-500">명</span>
+                            </div>
+                            <p className={`text-xs mt-1 font-medium ${isFulfilled ? 'text-green-500' : 'text-red-500'}`}>
+                                {isFulfilled ? <><i className="fa-solid fa-check-circle mr-1"></i>의무 달성</> : <><i className="fa-solid fa-triangle-exclamation mr-1"></i>미달 (부담금 리스크)</>}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Chart & Simulation Summary */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-lg font-bold text-gray-800 mb-4"><i className="fa-solid fa-chart-pie mr-2 text-brand-500"></i>충족률 시각화</h3>
+                            <div className="relative pt-4">
+                                <div className="flex justify-between mb-2 text-sm font-medium">
+                                    <span className="text-brand-600">현재 {currentWeightCount}명</span>
+                                    <span className="text-gray-500">목표 {requiredQuota}명</span>
+                                </div>
+                                <div className="overflow-hidden h-6 mb-4 text-xs flex rounded-full bg-gray-100">
+                                    <div style={{ width: `${Math.min((currentWeightCount / (requiredQuota || 1)) * 100, 100)}%` }} 
+                                         className={`shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center ${isFulfilled ? 'bg-green-500' : 'bg-red-500'} transition-all duration-1000`}>
+                                    </div>
+                                </div>
+                                <p className="text-sm text-gray-600 text-center">
+                                    목표 대비 <span className="font-bold">{achievement.toFixed(1)}%</span> 달성
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-lg font-bold text-gray-800 mb-4"><i className="fa-solid fa-forward-fast mr-2 text-brand-500"></i>채용 계획 반영 시뮬레이션</h3>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                    <span className="text-sm text-gray-600">예상 총 근로자</span>
+                                    <span className="font-semibold text-gray-900">{formatNumber(futureTotalEmp)}명 <span className="text-xs text-blue-500">(+{futureTotalEmp - totalEmp})</span></span>
+                                </div>
+                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                    <span className="text-sm text-gray-600">예상 인정 인원</span>
+                                    <span className="font-semibold text-gray-900">{formatNumber(futureWeightCount)}명 <span className="text-xs text-blue-500">(+{futureWeightCount - currentWeightCount})</span></span>
+                                </div>
+                                <div className={`flex justify-between items-center p-3 rounded-lg border ${futureGap >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                    <span className="text-sm font-bold text-gray-700">예상 Gap</span>
+                                    <span className={`font-bold text-lg ${futureGap >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                        {futureGap > 0 ? '+' : ''}{formatNumber(futureGap)}명
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Additional charts */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-lg font-bold text-gray-800 mb-4">
+                                <i className="fa-solid fa-layer-group mr-2 text-brand-500"></i>장애 구분 구성 비율
+                            </h3>
+                            <div className="space-y-3">
+                                <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="text-gray-600">비대상</span>
+                                        <span className="font-semibold text-gray-700">{composition.none}명</span>
+                                    </div>
+                                    <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
+                                        <div className="h-full bg-gray-400" style={{ width: `${(composition.none / compositionTotal) * 100}%` }} />
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="text-gray-600">경증</span>
+                                        <span className="font-semibold text-blue-700">{composition.light}명</span>
+                                    </div>
+                                    <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
+                                        <div className="h-full bg-blue-500" style={{ width: `${(composition.light / compositionTotal) * 100}%` }} />
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="text-gray-600">중증</span>
+                                        <span className="font-semibold text-purple-700">{composition.severe}명</span>
+                                    </div>
+                                    <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
+                                        <div className="h-full bg-purple-500" style={{ width: `${(composition.severe / compositionTotal) * 100}%` }} />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-lg font-bold text-gray-800 mb-4">
+                                <i className="fa-solid fa-chart-column mr-2 text-brand-500"></i>부서별 가중 인정 인원
+                            </h3>
+                            <div className="space-y-3">
+                                {!deptRows.length && <p className="text-sm text-gray-500">표시할 데이터가 없습니다.</p>}
+                                {deptRows.map((row) => (
+                                    <div key={row.dept}>
+                                        <div className="flex justify-between text-sm mb-1">
+                                            <span className="text-gray-600 truncate pr-3">{row.dept}</span>
+                                            <span className="font-semibold text-gray-800">{row.weighted.toFixed(1)}</span>
+                                        </div>
+                                        <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
+                                            <div className="h-full bg-brand-500" style={{ width: `${(row.weighted / maxDeptWeight) * 100}%` }} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- View: Employees ---
+        const EmployeeManager = ({ employees, onAdd, onDelete, onUpdate }) => {
+            const [searchTerm, setSearchTerm] = useState('');
+            const [filterType, setFilterType] = useState('ALL');
+            const [isFormOpen, setIsFormOpen] = useState(false);
+            const [formData, setFormData] = useState({ name: '', empNo: '', dept: '', disabilityType: 'NONE' });
+            const [editingId, setEditingId] = useState(null);
+
+            const filtered = employees.filter(emp => {
+                const matchSearch = emp.name.includes(searchTerm) || emp.empNo.includes(searchTerm) || emp.dept.includes(searchTerm);
+                const matchType = filterType === 'ALL' ? true : 
+                                  filterType === 'DISABLED' ? emp.disabilityType !== 'NONE' :
+                                  emp.disabilityType === filterType;
+                return matchSearch && matchType;
+            });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (editingId) {
+                    onUpdate(editingId, { ...formData });
+                } else {
+                    onAdd({ entityType: 'employee', ...formData });
+                }
+                setIsFormOpen(false);
+                setFormData({ name: '', empNo: '', dept: '', disabilityType: 'NONE' });
+                setEditingId(null);
+            };
+
+            return (
+                <div className="space-y-4 animate-fade-in flex flex-col h-full">
+                    <div className="flex justify-between items-center shrink-0">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-800">인원 현황 관리</h1>
+                            <p className="text-sm text-gray-500 mt-1">총 {employees.length}명 레코드</p>
+                        </div>
+                        <button onClick={() => setIsFormOpen(!isFormOpen)} className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                            <i className="fa-solid fa-plus mr-2"></i>인원 추가
+                        </button>
+                    </div>
+
+                    {/* Add Form */}
+                    {isFormOpen && (
+                        <div className="bg-white p-5 rounded-xl shadow-sm border border-brand-200 shrink-0 mb-4 animate-fade-in">
+                            <h3 className="text-sm font-bold text-gray-700 mb-3 border-b pb-2">
+                                {editingId ? "인원 정보 수정" : "신규 인원 등록"}
+                            </h3>
+                            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">성명 (마스킹 권장)</label>
+                                    <input required type="text" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} className="w-full text-sm p-2 border border-gray-300 rounded focus:outline-none focus:border-brand-500" placeholder="홍*동"/>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">사번</label>
+                                    <input required type="text" value={formData.empNo} onChange={e=>setFormData({...formData, empNo: e.target.value})} className="w-full text-sm p-2 border border-gray-300 rounded focus:outline-none focus:border-brand-500" placeholder="EMP001"/>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">소속(부서)</label>
+                                    <input required type="text" value={formData.dept} onChange={e=>setFormData({...formData, dept: e.target.value})} className="w-full text-sm p-2 border border-gray-300 rounded focus:outline-none focus:border-brand-500" placeholder="개발팀"/>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">장애 가중치 키</label>
+                                    <select value={formData.disabilityType} onChange={e=>setFormData({...formData, disabilityType: e.target.value})} className="w-full text-sm p-2 border border-gray-300 rounded focus:outline-none focus:border-brand-500 bg-white">
+                                        <option value="NONE">비대상</option>
+                                        <option value="LIGHT">경증 (1배수 적용)</option>
+                                        <option value="SEVERE">중증 (2배수 적용)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <button type="submit" className="w-full bg-gray-800 text-white p-2 rounded text-sm hover:bg-gray-900 transition-colors">
+                                        {editingId ? "수정 저장" : "저장"}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    {/* Tools */}
+                    <div className="flex gap-4 items-center shrink-0 bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+                        <div className="relative flex-1 max-w-sm">
+                            <i className="fa-solid fa-search absolute left-3 top-2.5 text-gray-400 text-sm"></i>
+                            <input type="text" placeholder="이름, 사번, 부서 검색..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
+                                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-brand-500" />
+                        </div>
+                        <select value={filterType} onChange={e=>setFilterType(e.target.value)} className="text-sm p-2 border border-gray-300 rounded-md focus:outline-none focus:border-brand-500 bg-white">
+                            <option value="ALL">전체 보기</option>
+                            <option value="DISABLED">장애인 근로자만</option>
+                            <option value="LIGHT">경증만</option>
+                            <option value="SEVERE">중증만</option>
+                        </select>
+                    </div>
+
+                    {/* Table */}
+                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex-1 overflow-hidden flex flex-col">
+                        <div className="overflow-y-auto flex-1 hide-scroll relative">
+                            <table className="min-w-full divide-y divide-gray-200 relative">
+                                <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">사번</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">성명</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">부서</th>
+                                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">가중치 구분</th>
+                                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">관리</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {filtered.length === 0 ? (
+                                        <tr><td colSpan="5" className="px-6 py-10 text-center text-gray-500">데이터가 없습니다.</td></tr>
+                                    ) : filtered.map(emp => (
+                                        <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{emp.empNo}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{emp.name}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{emp.dept}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                                    ${emp.disabilityType === 'NONE' ? 'bg-gray-100 text-gray-600' : 
+                                                      emp.disabilityType === 'SEVERE' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
+                                                    {DISABILITY_TYPES[emp.disabilityType]?.label}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingId(emp.id);
+                                                        setFormData({
+                                                            name: emp.name || "",
+                                                            empNo: emp.empNo || "",
+                                                            dept: emp.dept || "",
+                                                            disabilityType: emp.disabilityType || "NONE",
+                                                        });
+                                                        setIsFormOpen(true);
+                                                    }}
+                                                    className="text-blue-500 hover:text-blue-700 transition-colors mr-3"
+                                                >
+                                                    <i className="fa-solid fa-pen-to-square"></i>
+                                                </button>
+                                                <button onClick={() => onDelete(emp.id, `인원(${emp.name})`)} className="text-red-500 hover:text-red-700 transition-colors">
+                                                    <i className="fa-solid fa-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- View: Settings (Rules) ---
+        const Settings = ({ rules, onUpdateRules }) => {
+            const [localRules, setLocalRules] = useState(rules);
+            useEffect(() => {
+                setLocalRules(rules);
+            }, [rules]);
+
+            const handleChange = (field, value) => {
+                setLocalRules(prev => ({ ...prev, [field]: value }));
+            };
+
+            const handleSave = () => {
+                onUpdateRules({
+                    ...localRules,
+                    obligationRate: Number(localRules.obligationRate),
+                    weightLight: Number(localRules.weightLight),
+                    weightSevere: Number(localRules.weightSevere),
+                });
+            };
+
+            return (
+                <div className="space-y-6 animate-fade-in max-w-2xl">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-800">관리자 설정 (계산 룰셋)</h1>
+                        <p className="text-sm text-gray-500 mt-1">※ 이 설정은 실시간으로 모든 대시보드 계산에 적용됩니다. 법정 기준이 변경될 경우 수정하세요.</p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-6">
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">의무고용률 (%)</label>
+                            <input type="number" step="0.1" value={localRules.obligationRate} onChange={e=>handleChange('obligationRate', e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded focus:border-brand-500 focus:outline-none" />
+                            <p className="text-xs text-gray-500 mt-1">예: 민간기업 3.1%, 공공기관 3.8% 등</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">경증 가중치 (배수)</label>
+                                <input type="number" step="0.5" value={localRules.weightLight} onChange={e=>handleChange('weightLight', e.target.value)}
+                                    className="w-full p-2 border border-gray-300 rounded focus:border-brand-500 focus:outline-none" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">중증 가중치 (배수)</label>
+                                <input type="number" step="0.5" value={localRules.weightSevere} onChange={e=>handleChange('weightSevere', e.target.value)}
+                                    className="w-full p-2 border border-gray-300 rounded focus:border-brand-500 focus:outline-none" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">의무인원 산정 방식 (소수점 처리)</label>
+                            <select value={localRules.roundMode} onChange={e=>handleChange('roundMode', e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded focus:border-brand-500 focus:outline-none bg-white">
+                                <option value="floor">내림 (버림)</option>
+                                <option value="round">반올림</option>
+                                <option value="ceil">올림</option>
+                            </select>
+                        </div>
+
+                        <div className="pt-4 border-t border-gray-100 text-right">
+                            <button onClick={handleSave} className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-2 rounded-lg font-medium transition-colors">
+                                <i className="fa-solid fa-save mr-2"></i>설정 적용 및 저장
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- View: Hiring Plan ---
+        const HiringPlan = ({ plans, onAdd, onDelete }) => {
+            const [isFormOpen, setIsFormOpen] = useState(false);
+            const [formData, setFormData] = useState({ title: '', plannedDate: '', totalCount: 0, disabledCount: 0, disabilityType: 'NONE' });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onAdd({ entityType: 'hiringPlan', ...formData });
+                setIsFormOpen(false);
+                setFormData({ title: '', plannedDate: '', totalCount: 0, disabledCount: 0, disabilityType: 'NONE' });
+            };
+
+            return (
+                <div className="space-y-4 animate-fade-in flex flex-col h-full">
+                    <div className="flex justify-between items-center shrink-0">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-800">채용 예정/계획 관리</h1>
+                            <p className="text-sm text-gray-500 mt-1">이 데이터는 대시보드의 미래 시뮬레이션에 반영됩니다.</p>
+                        </div>
+                        <button onClick={() => setIsFormOpen(!isFormOpen)} className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                            <i className="fa-solid fa-calendar-plus mr-2"></i>계획 추가
+                        </button>
+                    </div>
+
+                    {isFormOpen && (
+                        <div className="bg-white p-5 rounded-xl shadow-sm border border-brand-200 shrink-0 mb-4 animate-fade-in">
+                            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+                                <div className="col-span-2">
+                                    <label className="block text-xs text-gray-500 mb-1">계획명</label>
+                                    <input required type="text" value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full text-sm p-2 border border-gray-300 rounded" placeholder="24년 하반기 공채"/>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">예정월</label>
+                                    <input required type="month" value={formData.plannedDate} onChange={e=>setFormData({...formData, plannedDate: e.target.value})} className="w-full text-sm p-2 border border-gray-300 rounded"/>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">총 채용(명)</label>
+                                    <input required type="number" min="1" value={formData.totalCount} onChange={e=>setFormData({...formData, totalCount: e.target.value})} className="w-full text-sm p-2 border border-gray-300 rounded"/>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">장애 타겟(명) / 유형</label>
+                                    <div className="flex">
+                                        <input type="number" min="0" value={formData.disabledCount} onChange={e=>setFormData({...formData, disabledCount: e.target.value})} className="w-1/2 text-sm p-2 border border-gray-300 rounded-l" placeholder="0"/>
+                                        <select value={formData.disabilityType} onChange={e=>setFormData({...formData, disabilityType: e.target.value})} className="w-1/2 text-sm p-2 border border-gray-300 border-l-0 rounded-r bg-white">
+                                            <option value="NONE">-</option>
+                                            <option value="LIGHT">경증</option>
+                                            <option value="SEVERE">중증</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <button type="submit" className="w-full bg-gray-800 text-white p-2 rounded text-sm hover:bg-gray-900 transition-colors">저장</button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex-1 overflow-hidden flex flex-col">
+                        <div className="overflow-y-auto flex-1 hide-scroll relative">
+                            <table className="min-w-full divide-y divide-gray-200 relative">
+                                <thead className="bg-gray-50 sticky top-0 z-10">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">예정월</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">계획명</th>
+                                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">총 채용 예정</th>
+                                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">장애 채용 타겟</th>
+                                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">관리</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {plans.length === 0 ? (
+                                        <tr><td colSpan="5" className="px-6 py-10 text-center text-gray-500">등록된 채용 계획이 없습니다.</td></tr>
+                                    ) : plans.map(plan => (
+                                        <tr key={plan.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-brand-600">{plan.plannedDate}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{plan.title}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-500">+{plan.totalCount}명</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                {plan.disabledCount > 0 ? (
+                                                    <span className="text-purple-600 font-bold">+{plan.disabledCount}명 ({DISABILITY_TYPES[plan.disabilityType]?.label})</span>
+                                                ) : <span className="text-gray-400">-</span>}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                <button onClick={() => onDelete(plan.id, `계획(${plan.title})`)} className="text-red-500 hover:text-red-700">
+                                                    <i className="fa-solid fa-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- View: Report ---
+        const ReportView = ({ employees, rules, snapshots, onSaveSnapshot }) => {
+            const totalEmp = employees.length;
+            const requiredQuota = calculateQuota(totalEmp, rules.obligationRate, rules.roundMode);
+            const weighted = employees.reduce((sum, emp) => {
+                if (emp.disabilityType === "SEVERE") return sum + Number(rules.weightSevere || 2);
+                if (emp.disabilityType === "LIGHT") return sum + Number(rules.weightLight || 1);
+                return sum;
+            }, 0);
+            const gap = weighted - requiredQuota;
+            const statusLabel = gap >= 0 ? "충족" : "미충족";
+
+            return (
+                <div className="space-y-4 animate-fade-in flex flex-col h-full">
+                    <div className="flex justify-between items-center shrink-0">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-800">리포트 요약</h1>
+                            <p className="text-sm text-gray-500 mt-1">현재 공용 데이터 기준 스냅샷 보고서</p>
+                        </div>
+                        <button
+                            onClick={onSaveSnapshot}
+                            className="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        >
+                            <i className="fa-solid fa-camera mr-2"></i>월간 스냅샷 저장
+                        </button>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                        <h3 className="text-lg font-bold text-gray-800 mb-3">현재 요약</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <p className="text-gray-500">총 인원</p>
+                                <p className="text-xl font-bold text-gray-900">{formatNumber(totalEmp)}명</p>
+                            </div>
+                            <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <p className="text-gray-500">의무 인원</p>
+                                <p className="text-xl font-bold text-gray-900">{formatNumber(requiredQuota)}명</p>
+                            </div>
+                            <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <p className="text-gray-500">가중 인원</p>
+                                <p className="text-xl font-bold text-gray-900">{formatNumber(weighted)}명</p>
+                            </div>
+                            <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <p className="text-gray-500">상태</p>
+                                <p className={`text-xl font-bold ${gap >= 0 ? "text-green-700" : "text-red-700"}`}>{statusLabel}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex-1 overflow-hidden flex flex-col">
+                        <div className="px-4 py-3 border-b border-gray-100">
+                            <h3 className="font-bold text-gray-800">저장된 스냅샷</h3>
+                        </div>
+                        <div className="overflow-y-auto flex-1 p-4 space-y-3">
+                            {!snapshots.length && <p className="text-sm text-gray-500">저장된 스냅샷이 없습니다.</p>}
+                            {snapshots.map((s) => (
+                                <div key={s.id} className="p-3 rounded-lg border border-gray-200 bg-gray-50">
+                                    <p className="text-sm font-semibold text-gray-800">{s.period || "기간 미지정"}</p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        총인원 {s.totalEmp ?? 0} / 의무 {s.requiredQuota ?? 0} / 가중 {s.weighted ?? 0} / 상태 {s.statusLabel || "-"}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- View: Audit Log ---
+        const AuditLog = ({ logs }) => {
+            return (
+                <div className="space-y-4 flex flex-col h-full">
+                    <div className="shrink-0">
+                        <h1 className="text-2xl font-bold text-gray-800">감사 로그</h1>
+                        <p className="text-sm text-gray-500 mt-1">공용 데이터 변경 이력 (최근 100건)</p>
+                    </div>
+                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex-1 overflow-hidden flex flex-col">
+                        <div className="overflow-y-auto flex-1 hide-scroll p-4 space-y-3">
+                            {logs.length === 0 && <p className="text-center text-gray-500 py-10">로그가 없습니다.</p>}
+                            {logs.map(log => (
+                                <div key={log.id} className="flex gap-4 items-start border-b border-gray-100 pb-3 last:border-0">
+                                    <div className={`mt-1 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs
+                                        ${log.action === 'CREATE' ? 'bg-green-500' : log.action === 'UPDATE' ? 'bg-blue-500' : 'bg-red-500'}`}>
+                                        <i className={`fa-solid ${log.action === 'CREATE' ? 'fa-plus' : log.action === 'UPDATE' ? 'fa-pen' : 'fa-trash'}`}></i>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-gray-800"><span className="font-bold">{log.summary}</span></p>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            {log.timestamp ? new Date(log.timestamp.toDate()).toLocaleString('ko-KR') : '방금 전'}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ---------------------------------------------------------
+        // 5. Main Application Component
+        // ---------------------------------------------------------
+        const App = () => {
+            const [isReady, setIsReady] = useState(false);
+            const [initError, setInitError] = useState(null);
+            const [user, setUser] = useState(null);
+            
+            // Global State
+            const [activeTab, setActiveTab] = useState('DASHBOARD');
+            const [employees, setEmployees] = useState([]);
+            const [rules, setRules] = useState(DEFAULT_RULES);
+            const [hiringPlans, setHiringPlans] = useState([]);
+            const [auditLogs, setAuditLogs] = useState([]);
+            const [reportSnapshots, setReportSnapshots] = useState([]);
+            const [lastSyncAt, setLastSyncAt] = useState(null);
+            
+            // UI State
+            const [isLoading, setIsLoading] = useState(true);
+            const [toast, setToast] = useState(null);
+            const [confirmState, setConfirmState] = useState({ isOpen: false, targetId: null, title: '', msg: '' });
+            const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile
+
+            // Firebase References
+            const FB = useRef(null);
+            const unsubscribers = useRef([]);
+
+            useEffect(() => {
+                const initFirebase = async () => {
+                    if (window.firebaseInitError) {
+                        setInitError(window.firebaseInitError);
+                        setIsReady(true);
+                        return;
+                    }
+                    if (!window.FB) return;
+                    FB.current = window.FB;
+
+                    try {
+                        // 익명 로그인 수행
+                        await FB.current.signInAnonymously(FB.current.auth);
+                        FB.current.onAuthStateChanged(FB.current.auth, (u) => {
+                            if (u) {
+                                setUser(u);
+                                setupRealtimeSync();
+                            }
+                        });
+                    } catch (err) {
+                        setInitError(err);
+                    }
+                };
+
+                // Firebase 모듈 로드 대기
+                const hasImmediateFirebase = !!(window.FB || window.firebaseInitError);
+                if (hasImmediateFirebase) {
+                    initFirebase();
+                } else {
+                    window.addEventListener('firebase-ready', initFirebase);
+                }
+                return () => {
+                    if (!hasImmediateFirebase) {
+                        window.removeEventListener('firebase-ready', initFirebase);
+                    }
+                    unsubscribers.current.forEach((u) => typeof u === "function" && u());
+                    unsubscribers.current = [];
+                };
+            }, []);
+
+            const setupRealtimeSync = () => {
+                const { db, collection, query, where, onSnapshot, doc } = FB.current;
+                const colRef = collection(db, COLLECTION_NAME);
+                unsubscribers.current.forEach((u) => typeof u === "function" && u());
+                unsubscribers.current = [];
+
+                const syncError = (err) => {
+                    console.error("Realtime sync error:", err);
+                    showToast("데이터 동기화 오류가 발생했습니다.", "error");
+                    setIsLoading(false);
+                };
+                const markSynced = () => {
+                    setIsLoading(false);
+                    setIsReady(true);
+                    setLastSyncAt(new Date());
+                };
+
+                unsubscribers.current.push(
+                    onSnapshot(query(colRef, where("entityType", "==", "employee")), (snapshot) => {
+                        setEmployees(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+                        markSynced();
+                    }, syncError)
+                );
+                unsubscribers.current.push(
+                    onSnapshot(query(colRef, where("entityType", "==", "hiringPlan")), (snapshot) => {
+                        setHiringPlans(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+                        markSynced();
+                    }, syncError)
+                );
+                unsubscribers.current.push(
+                    onSnapshot(query(colRef, where("entityType", "==", "auditLog")), (snapshot) => {
+                        const logs = snapshot.docs
+                            .map((d) => ({ id: d.id, ...d.data() }))
+                            .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0))
+                            .slice(0, 100);
+                        setAuditLogs(logs);
+                        markSynced();
+                    }, syncError)
+                );
+                unsubscribers.current.push(
+                    onSnapshot(query(colRef, where("entityType", "==", "reportSnapshot")), (snapshot) => {
+                        const rows = snapshot.docs
+                            .map((d) => ({ id: d.id, ...d.data() }))
+                            .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+                            .slice(0, 50);
+                        setReportSnapshots(rows);
+                        markSynced();
+                    }, syncError)
+                );
+                unsubscribers.current.push(
+                    onSnapshot(doc(db, COLLECTION_NAME, RULE_DOC_ID), (snap) => {
+                        if (snap.exists()) {
+                            setRules({ id: snap.id, ...snap.data() });
+                        } else {
+                            setRules({ ...DEFAULT_RULES, id: RULE_DOC_ID });
+                        }
+                        markSynced();
+                    }, syncError)
+                );
+            };
+
+            const showToast = (message, type = "success") => {
+                setToast({ message, type });
+            };
+
+            const logAction = async (action, summary) => {
+                if (!FB.current || !user) return;
+                try {
+                    await FB.current.addDoc(FB.current.collection(FB.current.db, COLLECTION_NAME), {
+                        entityType: 'auditLog',
+                        action,
+                        summary,
+                        actorUid: user.uid,
+                        timestamp: FB.current.serverTimestamp()
+                    });
+                } catch (e) {
+                    console.error("Log error", e); // 로깅 실패는 UI를 막지 않음
+                }
+            };
+
+            const handleAddDoc = async (data) => {
+                setIsLoading(true);
+                try {
+                    await FB.current.addDoc(FB.current.collection(FB.current.db, COLLECTION_NAME), {
+                        ...data,
+                        createdAt: FB.current.serverTimestamp()
+                    });
+                    logAction("CREATE", `${data.entityType === 'employee' ? '인원' : '계획'} 등록: ${data.name || data.title}`);
+                    showToast("성공적으로 등록되었습니다.");
+                } catch (err) {
+                    showToast("등록 실패: " + err.message, "error");
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const handleUpdateRules = async (newRules) => {
+                setIsLoading(true);
+                try {
+                    const docRef = FB.current.doc(FB.current.db, COLLECTION_NAME, RULE_DOC_ID);
+                    await FB.current.setDoc(docRef, {
+                        ...newRules,
+                        id: RULE_DOC_ID,
+                        entityType: 'ruleSet',
+                        updatedAt: FB.current.serverTimestamp()
+                    }, { merge: true });
+                    logAction("UPDATE", `의무율/룰셋 설정 변경`);
+                    showToast("설정이 실시간 적용되었습니다.");
+                } catch (err) {
+                    showToast("설정 저장 실패: " + err.message, "error");
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const handleUpdateEmployee = async (id, data) => {
+                setIsLoading(true);
+                try {
+                    const docRef = FB.current.doc(FB.current.db, COLLECTION_NAME, id);
+                    await FB.current.updateDoc(docRef, {
+                        ...data,
+                        updatedAt: FB.current.serverTimestamp()
+                    });
+                    logAction("UPDATE", `인원 수정: ${data.name || id}`);
+                    showToast("수정이 반영되었습니다.");
+                } catch (err) {
+                    showToast("수정 실패: " + err.message, "error");
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const triggerDelete = (id, title) => {
+                setConfirmState({
+                    isOpen: true,
+                    targetId: id,
+                    title: "항목 삭제",
+                    msg: `정말 [${title}] 항목을 삭제하시겠습니까? 이 작업은 복구할 수 없습니다.`
+                });
+            };
+
+            const performDelete = async () => {
+                if (!confirmState.targetId) return;
+                setIsLoading(true);
+                const id = confirmState.targetId;
+                setConfirmState({ isOpen: false, targetId: null, title: '', msg: '' });
+                try {
+                    const docRef = FB.current.doc(FB.current.db, COLLECTION_NAME, id);
+                    await FB.current.deleteDoc(docRef);
+                    logAction("DELETE", `데이터 삭제 (ID: ${id})`);
+                    showToast("삭제되었습니다.");
+                } catch (err) {
+                    showToast("삭제 실패: " + err.message, "error");
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const generateCSV = () => {
+                const header = "사번,성명,부서,장애구분\n";
+                const rows = employees.map(emp => 
+                    [
+                        escapeCsvCell(emp.empNo),
+                        escapeCsvCell(emp.name),
+                        escapeCsvCell(emp.dept),
+                        escapeCsvCell(DISABILITY_TYPES[emp.disabilityType]?.label),
+                    ].join(",")
+                ).join("\n");
+                
+                const blob = new Blob(["\ufeff" + header + rows], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", `hr_disability_data_${new Date().toISOString().split('T')[0]}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showToast("CSV 다운로드가 시작되었습니다.");
+            };
+
+            const saveSnapshot = async () => {
+                setIsLoading(true);
+                try {
+                    const totalEmp = employees.length;
+                    const requiredQuota = calculateQuota(totalEmp, rules.obligationRate, rules.roundMode);
+                    const weighted = employees.reduce((sum, emp) => {
+                        if (emp.disabilityType === "SEVERE") return sum + Number(rules.weightSevere || 2);
+                        if (emp.disabilityType === "LIGHT") return sum + Number(rules.weightLight || 1);
+                        return sum;
+                    }, 0);
+                    await FB.current.addDoc(FB.current.collection(FB.current.db, COLLECTION_NAME), {
+                        entityType: "reportSnapshot",
+                        period: new Date().toISOString().slice(0, 7),
+                        totalEmp,
+                        requiredQuota,
+                        weighted,
+                        gap: weighted - requiredQuota,
+                        statusLabel: weighted - requiredQuota >= 0 ? "충족" : "미충족",
+                        createdAt: FB.current.serverTimestamp(),
+                    });
+                    logAction("CREATE", "월간 스냅샷 저장");
+                    showToast("월간 스냅샷이 저장되었습니다.");
+                } catch (err) {
+                    showToast("스냅샷 저장 실패: " + err.message, "error");
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const handleBulkUpload = async (rows) => {
+                if (!rows?.length) {
+                    showToast("업로드할 데이터가 없습니다.", "error");
+                    return;
+                }
+                setIsLoading(true);
+                try {
+                    const batch = FB.current.writeBatch(FB.current.db);
+                    rows.forEach((row) => {
+                        const ref = FB.current.doc(FB.current.collection(FB.current.db, COLLECTION_NAME));
+                        batch.set(ref, {
+                            entityType: "employee",
+                            name: row.name,
+                            empNo: row.empNo,
+                            dept: row.dept,
+                            disabilityType: row.disabilityType || "NONE",
+                            createdAt: FB.current.serverTimestamp(),
+                        });
+                    });
+                    await batch.commit();
+                    await logAction("CREATE", `일괄 업로드 ${rows.length}건 등록`);
+                    showToast(`${rows.length}건 업로드 완료`);
+                } catch (err) {
+                    showToast("일괄 업로드 실패: " + err.message, "error");
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const MENU_GROUPS = [
+                {
+                    title: "핵심 운영",
+                    items: [
+                        { id: 'DASHBOARD', label: '대시보드', icon: 'fa-chart-line' },
+                        { id: 'EMPLOYEES', label: '인원 현황', icon: 'fa-users' },
+                        { id: 'HIRING', label: '채용 계획', icon: 'fa-calendar-check' },
+                    ],
+                },
+                {
+                    title: "분석 / 리포트",
+                    items: [
+                        { id: 'RISK', label: '리스크 센터', icon: 'fa-triangle-exclamation' },
+                        { id: 'REPORT', label: '리포트', icon: 'fa-file-lines' },
+                        { id: 'AUDIT', label: '감사 로그', icon: 'fa-list-check' },
+                    ],
+                },
+                {
+                    title: "데이터 / 설정",
+                    items: [
+                        { id: 'QUALITY', label: '데이터 품질', icon: 'fa-shield-halved' },
+                        { id: 'UPLOAD', label: '일괄 업로드', icon: 'fa-file-arrow-up' },
+                        { id: 'SETTINGS', label: '룰/설정', icon: 'fa-sliders' },
+                    ],
+                },
+            ];
+
+            const sidebarRisk = useMemo(() => {
+                const totalEmp = employees.length;
+                const requiredQuota = calculateQuota(totalEmp, rules.obligationRate, rules.roundMode);
+                const weighted = employees.reduce((sum, emp) => {
+                    if (emp.disabilityType === "SEVERE") return sum + Number(rules.weightSevere || 2);
+                    if (emp.disabilityType === "LIGHT") return sum + Number(rules.weightLight || 1);
+                    return sum;
+                }, 0);
+                const gap = weighted - requiredQuota;
+                return {
+                    gap,
+                    needCount: gap < 0 ? Math.ceil(Math.abs(gap)) : 0,
+                    updatedLabel: lastSyncAt ? lastSyncAt.toLocaleTimeString("ko-KR") : "-",
+                };
+            }, [employees, rules, lastSyncAt]);
+
+            if (!isReady) {
+                return (
+                    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+                        {initError ? (
+                            <div className="text-red-500 text-center p-4">
+                                <i className="fa-solid fa-triangle-exclamation text-4xl mb-4"></i>
+                                <h2 className="text-xl font-bold mb-2">초기화 실패</h2>
+                                <p className="text-sm bg-gray-200 p-2 rounded">{initError.message}</p>
+                                <p className="text-xs text-gray-500 mt-4">소스코드 내 Firebase 설정값을 확인하세요.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="spinner w-12 h-12 border-brand-500 border-t-transparent mb-4"></div>
+                                <p className="text-gray-500 font-medium animate-pulse">시스템 초기화 및 공용 데이터 동기화 중...</p>
+                            </>
+                        )}
+                    </div>
+                );
+            }
+
+            return (
+                <div className="flex h-screen overflow-hidden bg-gray-100 font-sans text-gray-800">
+                    {/* Sidebar / Mobile Menu Overlay */}
+                    <div className={`fixed inset-0 bg-black bg-opacity-50 z-20 transition-opacity lg:hidden ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsSidebarOpen(false)}></div>
+                    <div className={`fixed lg:static inset-y-0 left-0 w-64 bg-gray-900 text-white z-30 transform transition-transform duration-300 lg:transform-none flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                        <div className="p-5 bg-gray-950 border-b border-gray-800 flex items-center justify-between">
+                            <div className="font-bold text-lg flex items-center text-brand-400">
+                                <i className="fa-solid fa-hands-holding-circle mr-2 text-2xl"></i>
+                                장애인 고용 협업툴
+                            </div>
+                            <button className="lg:hidden text-gray-400 hover:text-white" onClick={() => setIsSidebarOpen(false)}>
+                                <i className="fa-solid fa-xmark text-xl"></i>
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto py-4">
+                            <nav className="space-y-4 px-3">
+                                {MENU_GROUPS.map((group) => (
+                                    <div key={group.title}>
+                                        <p className="px-2 mb-1 text-[11px] tracking-wide text-gray-500 uppercase">{group.title}</p>
+                                        <div className="space-y-1">
+                                            {group.items.map((tab) => (
+                                                <button
+                                                    key={tab.id}
+                                                    onClick={() => { setActiveTab(tab.id); setIsSidebarOpen(false); }}
+                                                    className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${activeTab === tab.id ? 'bg-brand-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
+                                                >
+                                                    <i className={`fa-solid ${tab.icon} w-6`}></i>
+                                                    {tab.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </nav>
+
+                        </div>
+                        <div className="p-4 bg-gray-950 text-xs text-gray-500 border-t border-gray-800">
+                            <p className="text-gray-300">공용 데이터 실시간 협업</p>
+                            <p className="mt-1 flex justify-between items-center text-gray-400">
+                                <span><i className="fa-solid fa-wifi text-green-500 mr-1"></i>동기화 상태</span>
+                                <span className="text-gray-200">정상</span>
+                            </p>
+                            <p className="mt-1 text-gray-400">최근 동기화: {sidebarRisk.updatedLabel}</p>
+                            <p className={`mt-1 ${sidebarRisk.needCount > 0 ? "text-red-300" : "text-emerald-300"}`}>
+                                {sidebarRisk.needCount > 0 ? `리스크: 최소 ${sidebarRisk.needCount}명 추가 필요` : "리스크: 충족 상태"}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Main Content */}
+                    <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+                        {/* Topbar */}
+                        <header className="bg-white shadow-sm h-16 flex items-center justify-between px-4 lg:px-8 z-10 shrink-0">
+                            <div className="flex items-center">
+                                <button className="lg:hidden text-gray-600 hover:text-gray-900 mr-4" onClick={() => setIsSidebarOpen(true)}>
+                                    <i className="fa-solid fa-bars text-xl"></i>
+                                </button>
+                                <h2 className="text-lg font-bold text-gray-800 hidden sm:block">장애인 고용의무 통합 관리 솔루션</h2>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                                {isLoading && <div className="spinner w-5 h-5 border-brand-500 border-t-transparent mr-2"></div>}
+                                <button onClick={generateCSV} className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-md transition-colors border border-gray-200">
+                                    <i className="fa-solid fa-file-csv mr-1"></i>데이터 내보내기
+                                </button>
+                            </div>
+                        </header>
+
+                        {/* Page Content */}
+                        <main className="flex-1 overflow-y-auto p-4 lg:p-8 relative w-full max-w-7xl mx-auto">
+                            {activeTab === 'DASHBOARD' && <Dashboard employees={employees} rules={rules} hiringPlans={hiringPlans} />}
+                            {activeTab === 'EMPLOYEES' && <EmployeeManager employees={employees} onAdd={handleAddDoc} onDelete={triggerDelete} onUpdate={handleUpdateEmployee} />}
+                            {activeTab === 'HIRING' && <HiringPlan plans={hiringPlans} onAdd={handleAddDoc} onDelete={triggerDelete} />}
+                            {activeTab === 'RISK' && <RiskCenter employees={employees} rules={rules} hiringPlans={hiringPlans} />}
+                            {activeTab === 'QUALITY' && <DataQuality employees={employees} />}
+                            {activeTab === 'UPLOAD' && <BulkUpload onUpload={handleBulkUpload} />}
+                            {activeTab === 'SETTINGS' && <Settings rules={rules} onUpdateRules={handleUpdateRules} />}
+                            {activeTab === 'REPORT' && <ReportView employees={employees} rules={rules} snapshots={reportSnapshots} onSaveSnapshot={saveSnapshot} />}
+                            {activeTab === 'AUDIT' && <AuditLog logs={auditLogs} />}
+                        </main>
+                    </div>
+
+                    {/* Modals & Toasts */}
+                    {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+                    <ConfirmModal
+                        {...confirmState}
+                        onConfirm={performDelete}
+                        onCancel={() => setConfirmState({ isOpen: false, targetId: null, title: '', msg: '' })}
+                    />
+                </div>
+            );
+        };
+
+        // --- View: Risk Center ---
+        const RiskCenter = ({ employees, rules, hiringPlans }) => {
+            const currentMonth = new Date().toISOString().slice(0, 7);
+            const requiredQuota = calculateQuota(employees.length, rules.obligationRate, rules.roundMode);
+            const weighted = employees.reduce((sum, emp) => {
+                if (emp.disabilityType === "SEVERE") return sum + Number(rules.weightSevere || 2);
+                if (emp.disabilityType === "LIGHT") return sum + Number(rules.weightLight || 1);
+                return sum;
+            }, 0);
+            const gap = weighted - requiredQuota;
+
+            const deptStats = Object.entries(
+                employees.reduce((acc, emp) => {
+                    const key = emp.dept || "미지정";
+                    if (!acc[key]) acc[key] = { total: 0, disabled: 0 };
+                    acc[key].total += 1;
+                    if (emp.disabilityType !== "NONE") acc[key].disabled += 1;
+                    return acc;
+                }, {})
+            )
+                .map(([dept, v]) => ({ dept, ...v, ratio: v.total ? (v.disabled / v.total) * 100 : 0 }))
+                .sort((a, b) => a.ratio - b.ratio)
+                .slice(0, 8);
+
+            const riskItems = [];
+            if (gap < 0) {
+                riskItems.push({ level: "high", text: `현재 최소 ${Math.ceil(Math.abs(gap))}명(가중 기준) 부족 상태입니다.` });
+            }
+            if (gap < 0 && hiringPlans.length === 0) {
+                riskItems.push({ level: "high", text: "등록된 채용 계획이 없어 미충족 상태 지속 가능성이 높습니다." });
+            }
+            if (hiringPlans.some((p) => Number(p.disabledCount || 0) === 0)) {
+                riskItems.push({ level: "medium", text: "일부 채용 계획에 장애인 채용 타겟이 0명으로 설정되어 있습니다." });
+            }
+            if (hiringPlans.some((p) => (p.plannedDate || "") < currentMonth)) {
+                riskItems.push({ level: "medium", text: "기준월 이전 예정월 데이터가 있습니다. 일정 지연 여부를 확인하세요." });
+            }
+            if (!riskItems.length) {
+                riskItems.push({ level: "low", text: "현재 기준 특이 리스크가 없습니다." });
+            }
+
+            return (
+                <div className="space-y-4 animate-fade-in flex flex-col h-full">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-800">리스크 센터</h1>
+                        <p className="text-sm text-gray-500 mt-1">미충족 위험과 운영 점검 항목을 우선순위로 확인합니다.</p>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="p-3 rounded-lg bg-gray-50 border border-gray-100">
+                                <p className="text-xs text-gray-500">의무 인원</p>
+                                <p className="text-xl font-bold text-gray-900">{requiredQuota}명</p>
+                            </div>
+                            <div className="p-3 rounded-lg bg-gray-50 border border-gray-100">
+                                <p className="text-xs text-gray-500">현재 가중 인원</p>
+                                <p className="text-xl font-bold text-gray-900">{weighted.toFixed(1)}명</p>
+                            </div>
+                            <div className={`p-3 rounded-lg border ${gap < 0 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
+                                <p className="text-xs text-gray-500">갭</p>
+                                <p className={`text-xl font-bold ${gap < 0 ? "text-red-700" : "text-green-700"}`}>{gap.toFixed(1)}명</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
+                        <section className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                            <h3 className="font-bold text-gray-800 mb-3">리스크 알림</h3>
+                            <div className="space-y-2">
+                                {riskItems.map((item, idx) => (
+                                    <div
+                                        key={`${item.level}-${idx}`}
+                                        className={`text-sm px-3 py-2 rounded-lg border ${
+                                            item.level === "high"
+                                                ? "bg-red-50 border-red-200 text-red-700"
+                                                : item.level === "medium"
+                                                ? "bg-amber-50 border-amber-200 text-amber-700"
+                                                : "bg-emerald-50 border-emerald-200 text-emerald-700"
+                                        }`}
+                                    >
+                                        {item.text}
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                        <section className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 overflow-auto">
+                            <h3 className="font-bold text-gray-800 mb-3">부서별 취약 구간</h3>
+                            <table className="min-w-full text-sm">
+                                <thead className="text-gray-500 border-b border-gray-200">
+                                    <tr>
+                                        <th className="py-2 text-left">부서</th>
+                                        <th className="py-2 text-right">총인원</th>
+                                        <th className="py-2 text-right">장애인</th>
+                                        <th className="py-2 text-right">비율</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {deptStats.map((d) => (
+                                        <tr key={d.dept} className="border-b border-gray-100">
+                                            <td className="py-2 text-gray-800">{d.dept}</td>
+                                            <td className="py-2 text-right text-gray-600">{d.total}</td>
+                                            <td className="py-2 text-right text-gray-600">{d.disabled}</td>
+                                            <td className="py-2 text-right font-semibold text-gray-800">{d.ratio.toFixed(1)}%</td>
+                                        </tr>
+                                    ))}
+                                    {!deptStats.length && (
+                                        <tr>
+                                            <td colSpan="4" className="py-8 text-center text-gray-500">데이터가 없습니다.</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </section>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- View: Data Quality ---
+        const DataQuality = ({ employees }) => {
+            const duplicateEmpNo = useMemo(() => {
+                const map = employees.reduce((acc, emp) => {
+                    const no = String(emp.empNo || "").trim();
+                    if (!no) return acc;
+                    acc[no] = (acc[no] || 0) + 1;
+                    return acc;
+                }, {});
+                return Object.keys(map).filter((k) => map[k] > 1);
+            }, [employees]);
+
+            const issues = useMemo(() => {
+                const rows = [];
+                employees.forEach((emp) => {
+                    if (!String(emp.name || "").trim()) rows.push({ id: emp.id, type: "누락", detail: "성명 누락" });
+                    if (!String(emp.empNo || "").trim()) rows.push({ id: emp.id, type: "누락", detail: "사번 누락" });
+                    if (!String(emp.dept || "").trim()) rows.push({ id: emp.id, type: "누락", detail: "부서 누락" });
+                    if (!["NONE", "LIGHT", "SEVERE"].includes(emp.disabilityType || "NONE")) {
+                        rows.push({ id: emp.id, type: "형식", detail: "장애 구분값 비정상" });
+                    }
+                });
+                duplicateEmpNo.forEach((empNo) => rows.push({ id: empNo, type: "중복", detail: `중복 사번: ${empNo}` }));
+                return rows;
+            }, [employees, duplicateEmpNo]);
+
+            return (
+                <div className="space-y-4 animate-fade-in flex flex-col h-full">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-800">데이터 품질</h1>
+                        <p className="text-sm text-gray-500 mt-1">누락/중복/형식 오류를 점검해 계산 신뢰도를 높입니다.</p>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="bg-white border border-gray-200 rounded-xl p-4">
+                            <p className="text-xs text-gray-500">전체 레코드</p>
+                            <p className="text-2xl font-bold text-gray-900">{employees.length}</p>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-xl p-4">
+                            <p className="text-xs text-gray-500">중복 사번</p>
+                            <p className="text-2xl font-bold text-amber-600">{duplicateEmpNo.length}</p>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-xl p-4">
+                            <p className="text-xs text-gray-500">이슈 건수</p>
+                            <p className="text-2xl font-bold text-red-600">{issues.length}</p>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-xl p-4">
+                            <p className="text-xs text-gray-500">정상률</p>
+                            <p className="text-2xl font-bold text-gray-900">
+                                {employees.length ? (((employees.length - issues.filter((i) => i.type !== "중복").length) / employees.length) * 100).toFixed(1) : "100.0"}%
+                            </p>
+                        </div>
+                    </div>
+                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex-1 overflow-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 sticky top-0">
+                                <tr>
+                                    <th className="px-4 py-3 text-left">유형</th>
+                                    <th className="px-4 py-3 text-left">상세</th>
+                                    <th className="px-4 py-3 text-left">대상</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {issues.map((issue, idx) => (
+                                    <tr key={`${issue.id}-${idx}`} className="border-b border-gray-100">
+                                        <td className="px-4 py-2">{issue.type}</td>
+                                        <td className="px-4 py-2 text-gray-700">{issue.detail}</td>
+                                        <td className="px-4 py-2 text-xs text-gray-500">{issue.id}</td>
+                                    </tr>
+                                ))}
+                                {!issues.length && (
+                                    <tr>
+                                        <td colSpan="3" className="px-4 py-10 text-center text-emerald-700">현재 품질 이슈가 없습니다.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- View: Bulk Upload ---
+        const BulkUpload = ({ onUpload }) => {
+            const [raw, setRaw] = useState("");
+            const [parsedRows, setParsedRows] = useState([]);
+            const [preview, setPreview] = useState([]);
+            const [errors, setErrors] = useState([]);
+
+            const parseRows = useCallback((text) => {
+                const lines = text.split(/\r?\n/).filter((l) => l.trim());
+                if (!lines.length) return { rows: [], errs: ["입력 데이터가 없습니다."] };
+
+                const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+                const idx = {
+                    empNo: headers.findIndex((h) => ["사번", "empno", "employee_no", "employeeNo".toLowerCase()].includes(h)),
+                    name: headers.findIndex((h) => ["성명", "이름", "name"].includes(h)),
+                    dept: headers.findIndex((h) => ["부서", "dept", "department"].includes(h)),
+                    type: headers.findIndex((h) => ["장애구분", "disabilitytype", "disability_type"].includes(h)),
+                };
+                const errs = [];
+                if (idx.empNo < 0 || idx.name < 0 || idx.dept < 0) {
+                    errs.push("필수 헤더(사번, 성명, 부서)가 필요합니다.");
+                    return { rows: [], errs };
+                }
+                const rows = [];
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = lines[i].split(",").map((c) => c.trim());
+                    if (!cols.some(Boolean)) continue;
+                    const row = {
+                        empNo: cols[idx.empNo] || "",
+                        name: cols[idx.name] || "",
+                        dept: cols[idx.dept] || "",
+                        disabilityType: normalizeDisabilityType(idx.type >= 0 ? cols[idx.type] : "NONE"),
+                    };
+                    if (!row.empNo || !row.name || !row.dept) {
+                        errs.push(`${i + 1}행: 필수값 누락`);
+                        continue;
+                    }
+                    rows.push({ entityType: "employee", ...row });
+                }
+                return { rows, errs };
+            }, []);
+
+            const runParse = () => {
+                const { rows, errs } = parseRows(raw);
+                setParsedRows(rows);
+                setPreview(rows.slice(0, 20));
+                setErrors(errs);
+            };
+
+            const handleFile = async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const text = await file.text();
+                setRaw(text);
+                const { rows, errs } = parseRows(text);
+                setParsedRows(rows);
+                setPreview(rows.slice(0, 20));
+                setErrors(errs);
+            };
+
+            return (
+                <div className="space-y-4 animate-fade-in flex flex-col h-full">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-800">일괄 업로드</h1>
+                        <p className="text-sm text-gray-500 mt-1">CSV를 업로드해 인원 데이터를 한 번에 등록합니다.</p>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                            <input type="file" accept=".csv,text/csv" onChange={handleFile} className="text-sm" />
+                            <button onClick={runParse} className="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-sm border border-gray-200">미리보기 갱신</button>
+                            <button
+                                onClick={() => onUpload(parsedRows)}
+                                className="px-3 py-2 rounded-md bg-brand-600 hover:bg-brand-700 text-white text-sm"
+                                disabled={!parsedRows.length}
+                            >
+                                업로드 실행 ({parsedRows.length}건)
+                            </button>
+                        </div>
+                        <textarea
+                            value={raw}
+                            onChange={(e) => setRaw(e.target.value)}
+                            className="w-full h-40 border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:border-brand-500"
+                            placeholder={"헤더 예시: 사번,성명,부서,장애구분\nEMP001,홍길동,개발팀,LIGHT"}
+                        />
+                    </div>
+                    {!!errors.length && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                            <h3 className="font-bold text-red-700 mb-2">검증 오류</h3>
+                            <ul className="text-sm text-red-700 space-y-1">
+                                {errors.slice(0, 20).map((err, idx) => <li key={idx}>- {err}</li>)}
+                            </ul>
+                        </div>
+                    )}
+                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex-1 overflow-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 text-gray-500">
+                                <tr>
+                                    <th className="px-4 py-3 text-left">사번</th>
+                                    <th className="px-4 py-3 text-left">성명</th>
+                                    <th className="px-4 py-3 text-left">부서</th>
+                                    <th className="px-4 py-3 text-left">장애구분</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {preview.map((r, idx) => (
+                                    <tr key={`${r.empNo}-${idx}`} className="border-b border-gray-100">
+                                        <td className="px-4 py-2">{r.empNo}</td>
+                                        <td className="px-4 py-2">{r.name}</td>
+                                        <td className="px-4 py-2">{r.dept}</td>
+                                        <td className="px-4 py-2">{DISABILITY_TYPES[r.disabilityType]?.label || "비대상"}</td>
+                                    </tr>
+                                ))}
+                                {!preview.length && (
+                                    <tr><td colSpan="4" className="px-4 py-10 text-center text-gray-500">미리보기 데이터가 없습니다.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <ErrorBoundary>
+                <App />
+            </ErrorBoundary>
+        );
+    </script>
+
+    <!-- 
+      ==== 자가 점검 (Self-Check) ====
+      1. 단일 HTML 파일 유지 확인 (O)
+      2. React/Babel(7.23.5)/Tailwind CDN 정상 로드 경로 확인 (O)
+      3. Firebase 설정 주석 가이드 포함 여부 (O)
+      4. UID 분리 없이 공용 컬렉션(global_shared_data) 구독 및 실시간(onSnapshot) 반영 확인 (O)
+      5. ErrorBoundary 최상단 적용 확인 (O)
+    -->
+</body>
+</html>
