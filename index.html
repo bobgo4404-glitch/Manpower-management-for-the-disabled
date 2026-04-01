@@ -152,6 +152,7 @@
         const DEFAULT_RULES = {
             entityType: 'ruleSet',
             id: 'default_rule',
+            registeredHeadcount: null, // 설정한 상시근로자수. 없으면 직원 레코드 수 사용
             obligationRate: 3.1, // 기본 의무고용률 (%)
             weightLight: 1,      // 경증 가중치
             weightSevere: 2,     // 중증 가중치
@@ -177,6 +178,10 @@
             if (mode === 'ceil') return Math.ceil(raw);
             if (mode === 'round') return Math.round(raw);
             return Math.floor(raw); // default: floor
+        };
+        const getConfiguredHeadcount = (employees, rules) => {
+            const configured = Number(rules?.registeredHeadcount);
+            return Number.isFinite(configured) && configured >= 0 ? configured : employees.length;
         };
 
         // ---------------------------------------------------------
@@ -237,7 +242,8 @@
         // --- View: Dashboard ---
         const Dashboard = ({ employees, rules, hiringPlans }) => {
             // 현재 현황 계산
-            const totalEmp = employees.length;
+            const totalEmp = getConfiguredHeadcount(employees, rules);
+            const actualRecordCount = employees.length;
             const requiredQuota = calculateQuota(totalEmp, rules.obligationRate, rules.roundMode);
             
             let currentWeightCount = 0;
@@ -315,6 +321,7 @@
                                 <span className="text-3xl font-bold text-gray-900">{formatNumber(totalEmp)}</span>
                                 <span className="text-sm text-gray-500">명</span>
                             </div>
+                            <p className="text-xs text-gray-400 mt-1">등록 레코드 {actualRecordCount}명 기준과 별도 관리</p>
                         </div>
                         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-purple-500">
                             <h3 className="text-sm font-medium text-gray-500">의무 고용 인원</h3>
@@ -598,7 +605,7 @@
         };
 
         // --- View: Settings (Rules) ---
-        const Settings = ({ rules, onUpdateRules }) => {
+        const Settings = ({ rules, employees, onUpdateRules }) => {
             const [localRules, setLocalRules] = useState(rules);
             useEffect(() => {
                 setLocalRules(rules);
@@ -611,6 +618,10 @@
             const handleSave = () => {
                 onUpdateRules({
                     ...localRules,
+                    registeredHeadcount:
+                        String(localRules.registeredHeadcount ?? "").trim() === ""
+                            ? null
+                            : Number(localRules.registeredHeadcount),
                     obligationRate: Number(localRules.obligationRate),
                     weightLight: Number(localRules.weightLight),
                     weightSevere: Number(localRules.weightSevere),
@@ -625,6 +636,19 @@
                     </div>
 
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-6">
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">상시근로자수</label>
+                            <input
+                                type="number"
+                                min="0"
+                                value={localRules.registeredHeadcount ?? ""}
+                                onChange={e=>handleChange('registeredHeadcount', e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded focus:border-brand-500 focus:outline-none"
+                                placeholder={`미입력 시 현재 레코드 수(${employees.length}명) 사용`}
+                            />
+                            <p className="text-xs text-gray-500 mt-1">법정 의무인원 계산의 기준이 되는 상시근로자수입니다. 비워두면 현재 등록된 인원 레코드 수를 사용합니다.</p>
+                        </div>
+
                         <div>
                             <label className="block text-sm font-bold text-gray-700 mb-1">의무고용률 (%)</label>
                             <input type="number" step="0.1" value={localRules.obligationRate} onChange={e=>handleChange('obligationRate', e.target.value)}
@@ -764,7 +788,7 @@
 
         // --- View: Report ---
         const ReportView = ({ employees, rules, snapshots, onSaveSnapshot }) => {
-            const totalEmp = employees.length;
+            const totalEmp = getConfiguredHeadcount(employees, rules);
             const requiredQuota = calculateQuota(totalEmp, rules.obligationRate, rules.roundMode);
             const weighted = employees.reduce((sum, emp) => {
                 if (emp.disabilityType === "SEVERE") return sum + Number(rules.weightSevere || 2);
@@ -1035,7 +1059,7 @@
                         entityType: 'ruleSet',
                         updatedAt: FB.current.serverTimestamp()
                     }, { merge: true });
-                    logAction("UPDATE", `의무율/룰셋 설정 변경`);
+                    logAction("UPDATE", `상시근로자수/의무율/룰셋 설정 변경`);
                     showToast("설정이 실시간 적용되었습니다.");
                 } catch (err) {
                     showToast("설정 저장 실패: " + err.message, "error");
@@ -1112,7 +1136,7 @@
             const saveSnapshot = async () => {
                 setIsLoading(true);
                 try {
-                    const totalEmp = employees.length;
+                    const totalEmp = getConfiguredHeadcount(employees, rules);
                     const requiredQuota = calculateQuota(totalEmp, rules.obligationRate, rules.roundMode);
                     const weighted = employees.reduce((sum, emp) => {
                         if (emp.disabilityType === "SEVERE") return sum + Number(rules.weightSevere || 2);
@@ -1123,6 +1147,7 @@
                         entityType: "reportSnapshot",
                         period: new Date().toISOString().slice(0, 7),
                         totalEmp,
+                        actualRecordCount: employees.length,
                         requiredQuota,
                         weighted,
                         gap: weighted - requiredQuota,
@@ -1195,7 +1220,7 @@
             ];
 
             const sidebarRisk = useMemo(() => {
-                const totalEmp = employees.length;
+                const totalEmp = getConfiguredHeadcount(employees, rules);
                 const requiredQuota = calculateQuota(totalEmp, rules.obligationRate, rules.roundMode);
                 const weighted = employees.reduce((sum, emp) => {
                     if (emp.disabilityType === "SEVERE") return sum + Number(rules.weightSevere || 2);
@@ -1305,7 +1330,7 @@
                             {activeTab === 'RISK' && <RiskCenter employees={employees} rules={rules} hiringPlans={hiringPlans} />}
                             {activeTab === 'QUALITY' && <DataQuality employees={employees} />}
                             {activeTab === 'UPLOAD' && <BulkUpload onUpload={handleBulkUpload} />}
-                            {activeTab === 'SETTINGS' && <Settings rules={rules} onUpdateRules={handleUpdateRules} />}
+                            {activeTab === 'SETTINGS' && <Settings rules={rules} employees={employees} onUpdateRules={handleUpdateRules} />}
                             {activeTab === 'REPORT' && <ReportView employees={employees} rules={rules} snapshots={reportSnapshots} onSaveSnapshot={saveSnapshot} />}
                             {activeTab === 'AUDIT' && <AuditLog logs={auditLogs} />}
                         </main>
@@ -1325,7 +1350,8 @@
         // --- View: Risk Center ---
         const RiskCenter = ({ employees, rules, hiringPlans }) => {
             const currentMonth = new Date().toISOString().slice(0, 7);
-            const requiredQuota = calculateQuota(employees.length, rules.obligationRate, rules.roundMode);
+            const configuredHeadcount = getConfiguredHeadcount(employees, rules);
+            const requiredQuota = calculateQuota(configuredHeadcount, rules.obligationRate, rules.roundMode);
             const weighted = employees.reduce((sum, emp) => {
                 if (emp.disabilityType === "SEVERE") return sum + Number(rules.weightSevere || 2);
                 if (emp.disabilityType === "LIGHT") return sum + Number(rules.weightLight || 1);
@@ -1370,7 +1396,11 @@
                         <p className="text-sm text-gray-500 mt-1">미충족 위험과 운영 점검 항목을 우선순위로 확인합니다.</p>
                     </div>
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                            <div className="p-3 rounded-lg bg-gray-50 border border-gray-100">
+                                <p className="text-xs text-gray-500">설정 상시근로자수</p>
+                                <p className="text-xl font-bold text-gray-900">{configuredHeadcount}명</p>
+                            </div>
                             <div className="p-3 rounded-lg bg-gray-50 border border-gray-100">
                                 <p className="text-xs text-gray-500">의무 인원</p>
                                 <p className="text-xl font-bold text-gray-900">{requiredQuota}명</p>
